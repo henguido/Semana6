@@ -45,3 +45,22 @@ Código de salida:
 - `2` — hay una regresión inesperada, una inconsistencia del manifest de hallazgos esperados
   (`tests/fallos-esperados.json`), o cualquier otra situación que no permita considerar verde
   la puerta.
+
+## Integración continua
+
+El workflow `.github/workflows/ci.yml` corre en cada `push` y en cada `pull_request`, sobre una
+máquina limpia (`ubuntu-latest`), con Node 22 y sin credenciales de servicios externos. Instala
+las dependencias con `npm ci` (desde `package-lock.json`) y la puerta que decide si el estado es
+aceptable es la misma heredada del Caso 5: `bash verificar.sh`. No se usa `npm test` ni
+`node --test` directamente como puerta, porque `verificar.sh` es quien distingue los cuatro
+hallazgos abiertos ya documentados en `HALLAZGOS.md` de una regresión real.
+
+- Los cuatro hallazgos abiertos (`HALLAZGO-02`, `HALLAZGO-03`, `HALLAZGO-04`) pueden seguir
+  fallando en la suite sin que eso convierta la puerta en roja: `verificar.sh` sale con código
+  `0` mientras esos fallos coincidan exactamente con `tests/fallos-esperados.json`.
+- Cualquier fallo nuevo, no manifestado en `tests/fallos-esperados.json`, hace que `verificar.sh`
+  salga con código `2` y la puerta quede roja.
+- El check requerido para poder fusionar a `main` es el job **`verificar`** del workflow **`CI`**.
+  Únicamente ese check, configurado como *required status check* en la protección de la rama,
+  bloquea el merge. Cualquier otro check o estado que no esté marcado como requerido es solo
+  informativo y no impide fusionar.
