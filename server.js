@@ -269,6 +269,12 @@ app.post('/reservas', async (req, res) => {
     errores.push('Falta el nombre del cliente.');
   }
 
+  if (!telefono) {
+    errores.push('Falta el teléfono del cliente.');
+  } else if (!/^\d{8}$/.test(telefono)) {
+    errores.push('El teléfono debe tener exactamente 8 dígitos.');
+  }
+
   if (errores.length > 0) {
     const listaErrores = errores.map(e => `<li>${e}</li>`).join('');
     const contenidoError = `<div class="error"><p>No se pudo crear la reserva:</p><ul>${listaErrores}</ul></div><p><a href="/">Volver</a></p>`;
@@ -290,7 +296,7 @@ app.post('/reservas', async (req, res) => {
   const mesFecha = fecha.slice(0, 7);
   const conteoMes = await db.get(
     `SELECT COUNT(*) AS total FROM reservas
-     WHERE telefono = ? AND substr(fecha, 1, 7) = ?`,
+     WHERE telefono = ? AND substr(fecha, 1, 7) = ? AND estado = 'activa'`,
     telefono, mesFecha
   );
 
@@ -328,9 +334,13 @@ app.post('/reservas/:id/cancelar', async (req, res) => {
     return res.send(layout('Error', `<div class="error">La reserva #${id} ya estaba cancelada.</div><p><a href="/dia/${reserva.fecha}">Volver</a></p>`));
   }
 
-  // Regla de las 24 horas: la reserva tiene que ser para una fecha futura.
-  const hoyFecha = hoyISO();
-  if (reserva.fecha > hoyFecha) {
+  // Regla de las 24 horas: se exige que falten 24 horas reales o más para el
+  // bloque exacto de la reserva (año/mes/día/hora), no solo que la fecha sea
+  // distinta a la de hoy.
+  const [anio, mes, dia] = reserva.fecha.split('-').map(Number);
+  const inicioBloque = new Date(anio, mes - 1, dia, reserva.hora, 0, 0, 0);
+  const horasHastaElBloque = (inicioBloque.getTime() - Date.now()) / 3_600_000;
+  if (horasHastaElBloque >= 24) {
     await db.run(`UPDATE reservas SET estado = 'cancelada' WHERE id = ?`, id);
     return res.send(layout('Cancelada', `<div class="ok">Reserva #${id} cancelada.</div><p><a href="/dia/${reserva.fecha}">Volver</a></p>`));
   } else {
