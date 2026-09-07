@@ -8,10 +8,6 @@
     "hallazgo": "HALLAZGO-02"
   },
   {
-    "prueba": "[integración] RN-11 [§4.2, §4.3 — administradora] desde las 17:00 inclusive el bloque cuesta ₡20.000",
-    "hallazgo": "HALLAZGO-01"
-  },
-  {
     "prueba": "[integración] RN-13 [§5.3 — administradora] las reservas canceladas no cuentan para determinar cliente frecuente",
     "hallazgo": "HALLAZGO-03"
   },

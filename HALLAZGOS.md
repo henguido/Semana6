@@ -4,13 +4,13 @@ Registro de discrepancias descubiertas por la suite de pruebas (`tests/especific
 entre la especificación reconstruida (`ESPECIFICACION.md`) y el sistema entregado por el
 proveedor (commit `65ce4b4`), más las deudas de estructura detectadas al escribir esa suite.
 
-Ningún hallazgo de comportamiento se corrige en este bloque: los cuatro están abiertos. Cada uno
-tiene una prueba **normal** (sin `todo` ni `skip`) que hoy falla contra el código del proveedor
-porque exige la regla de la administradora; el vínculo prueba↔hallazgo vive fuera de la suite, en
-`tests/fallos-esperados.json`, que es lo que lee `verificar.sh` para no tratar esos fallos
-conocidos como regresión. El día que se corrija un hallazgo, su prueba pasa a verde sin tocarse:
-solo hay que quitar la entrada correspondiente de `tests/fallos-esperados.json` y actualizar el
-estado aquí a "cerrado" con su evidencia.
+Cada hallazgo de comportamiento tiene una prueba **normal** (sin `todo` ni `skip`) que exige la
+regla de la administradora; el vínculo prueba↔hallazgo vive fuera de la suite, en
+`tests/fallos-esperados.json`, que es lo que lee `verificar.sh` para no tratar los fallos
+todavía abiertos como regresión. Cuando se corrige un hallazgo, su prueba pasa a verde sin
+tocarse: solo se quita la entrada correspondiente de `tests/fallos-esperados.json` y se actualiza
+el estado aquí a "cerrado" con su evidencia. HALLAZGO-01 ya se corrigió así; HALLAZGO-02,
+HALLAZGO-03 y HALLAZGO-04 siguen abiertos.
 
 ---
 
@@ -21,10 +21,28 @@ estado aquí a "cerrado" con su evidencia.
 - **Prueba que lo evidencia:** `RN-11` en `tests/especificacion.test.js`
 - **Comportamiento esperado (administradora):** el bloque de las 17:00 ya se cobra con tarifa
   nocturna, ₡20.000.
-- **Comportamiento observado:** `server.js` aplica la tarifa nocturna solo desde `hora >= 18`
-  (líneas 127, 280 y 369). El bloque de las 17:00 se cobra como diurno, ₡15.000.
-- **Estado:** abierto
-- **Evidencia de cierre:** —
+- **Comportamiento observado (histórico):** al momento de este hallazgo, `server.js` aplicaba la
+  tarifa nocturna solo desde `hora >= 18`, en tres copias duplicadas del cálculo (líneas 127, 280
+  y 369 del código del proveedor). El refactor estructural del commit `722ebbe` ("Centralizar
+  cálculo de precio de las reservas") centralizó esas tres copias en la función
+  `precioDelBloque(hora)` sin cambiar el umbral (`>= 18` se mantuvo intacto) — ese commit dejó el
+  comportamiento defectuoso exactamente igual, a propósito, para separar la deuda de estructura de
+  la corrección de comportamiento.
+- **Estado:** **cerrado**
+- **Evidencia de cierre:**
+  - Regla corregida: se cambió el único umbral de `precioDelBloque(hora)` de `hora >= 18` a
+    `hora >= 17`. Es la única línea de producción tocada para este cierre.
+  - Prueba: `RN-11` en `tests/especificacion.test.js` pasó de `not ok` a `ok` sin que se
+    modificara ni una sola línea de ese archivo — el hash del archivo (`sha256`) antes y después
+    de la corrección es idéntico:
+    `858b28ff5ba109ccddebc92c787a9da0b095a6b4773246630774e1e6e1f3c784`.
+  - Commit donde el comportamiento todavía era incorrecto (baseline de comparación):
+    `722ebbec44ac0313ae10b7a8153f54327753b264` ("Centralizar cálculo de precio de las reservas").
+  - Verificación posterior a la corrección: 22 pruebas — 18 pasan, 4 fallan (exactamente
+    HALLAZGO-02, HALLAZGO-03 y HALLAZGO-04, sin regresiones nuevas); `verificar.sh` terminó en
+    código `0`.
+  - `tests/fallos-esperados.json`: se retiró la entrada de `RN-11`/`HALLAZGO-01` (las de
+    HALLAZGO-02, HALLAZGO-03 y HALLAZGO-04 no se tocaron).
 
 ## HALLAZGO-02 — El teléfono no es obligatorio ni se valida su formato
 
