@@ -2,16 +2,15 @@
 // Node + Express + better-sqlite3, vistas renderizadas en el servidor.
 
 const express = require('express');
-const Database = require('better-sqlite3');
-const path = require('path');
+const { crearDb } = require('./db');
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-const db = new Database(path.join(__dirname, 'reservas.db'));
+const db = crearDb();
 
-db.exec(`
+const ESQUEMA_RESERVAS = `
   CREATE TABLE IF NOT EXISTS reservas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cancha INTEGER NOT NULL,
@@ -23,7 +22,7 @@ db.exec(`
     estado TEXT NOT NULL DEFAULT 'activa',
     creada_en TEXT NOT NULL DEFAULT (datetime('now'))
   )
-`);
+`;
 
 // -----------------------------------------------------------------------
 // Función vieja que ya no usa nadie. Quedó del primer borrador cuando se
@@ -59,25 +58,28 @@ function precioDelBloque(hora) {
   }
 }
 
-function checkDisponible(cancha, fecha, hora) {
-  const fila = db.prepare(
+async function checkDisponible(cancha, fecha, hora) {
+  const fila = await db.get(
     `SELECT COUNT(*) AS total FROM reservas
-     WHERE cancha = ? AND fecha = ? AND hora = ? AND estado = 'activa'`
-  ).get(cancha, fecha, hora);
+     WHERE cancha = ? AND fecha = ? AND hora = ? AND estado = 'activa'`,
+    cancha, fecha, hora
+  );
   return fila.total === 0;
 }
 
-function getReservasDelDia(fecha) {
-  return db.prepare(
-    `SELECT * FROM reservas WHERE fecha = ? ORDER BY cancha, hora`
-  ).all(fecha);
+async function getReservasDelDia(fecha) {
+  return db.all(
+    `SELECT * FROM reservas WHERE fecha = ? ORDER BY cancha, hora`,
+    fecha
+  );
 }
 
-function crearReserva(datos) {
-  const info = db.prepare(
+async function crearReserva(datos) {
+  const info = await db.run(
     `INSERT INTO reservas (cancha, fecha, hora, cliente, telefono, precio, estado)
-     VALUES (?, ?, ?, ?, ?, ?, 'activa')`
-  ).run(datos.cancha, datos.fecha, datos.hora, datos.cliente, datos.telefono, datos.precio);
+     VALUES (?, ?, ?, ?, ?, ?, 'activa')`,
+    datos.cancha, datos.fecha, datos.hora, datos.cliente, datos.telefono, datos.precio
+  );
   return info.lastInsertRowid;
 }
 
@@ -126,7 +128,7 @@ ${contenido}
 
 // GET / -------------------------------------------------------------------
 // Disponibilidad del día para ambas canchas + formulario de reserva.
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
   const fecha = req.query.fecha || hoyISO();
 
   let filasCancha1 = '';
@@ -135,10 +137,10 @@ app.get('/', (req, res) => {
     // Tarifa del bloque para pintar la disponibilidad.
     const precio = precioDelBloque(hora);
 
-    const libre1 = checkDisponible(1, fecha, hora);
+    const libre1 = await checkDisponible(1, fecha, hora);
     filasCancha1 += `<tr><td>${hora}:00</td><td class="${libre1 ? 'libre' : 'ocupado'}">${libre1 ? 'Libre' : 'Ocupado'}</td><td>${formatColones(precio)}</td></tr>`;
 
-    const libre2 = checkDisponible(2, fecha, hora);
+    const libre2 = await checkDisponible(2, fecha, hora);
     filasCancha2 += `<tr><td>${hora}:00</td><td class="${libre2 ? 'libre' : 'ocupado'}">${libre2 ? 'Libre' : 'Ocupado'}</td><td>${formatColones(precio)}</td></tr>`;
   }
 
@@ -193,11 +195,11 @@ app.get('/', (req, res) => {
 });
 
 // GET /disponibilidad/cancha1 y /disponibilidad/cancha2 -------------------
-app.get('/disponibilidad/cancha1', (req, res) => {
+app.get('/disponibilidad/cancha1', async (req, res) => {
   const fecha = req.query.fecha || hoyISO();
   let filas = '';
   for (let hora = 8; hora <= 21; hora++) {
-    const libre = checkDisponible(1, fecha, hora);
+    const libre = await checkDisponible(1, fecha, hora);
     filas += `<tr><td>${hora}:00</td><td class="${libre ? 'libre' : 'ocupado'}">${libre ? 'Libre' : 'Ocupado'}</td></tr>`;
   }
   const contenido = `
@@ -211,11 +213,11 @@ app.get('/disponibilidad/cancha1', (req, res) => {
   res.send(layout('Cancha 1', contenido));
 });
 
-app.get('/disponibilidad/cancha2', (req, res) => {
+app.get('/disponibilidad/cancha2', async (req, res) => {
   const fecha = req.query.fecha || hoyISO();
   let filas = '';
   for (let hora = 8; hora <= 21; hora++) {
-    const libre = checkDisponible(2, fecha, hora);
+    const libre = await checkDisponible(2, fecha, hora);
     filas += `<tr><td>${hora}:00</td><td class="${libre ? 'libre' : 'ocupado'}">${libre ? 'Libre' : 'Ocupado'}</td></tr>`;
   }
   const contenido = `
@@ -230,7 +232,7 @@ app.get('/disponibilidad/cancha2', (req, res) => {
 });
 
 // POST /reservas ------------------------------------------------------------
-app.post('/reservas', (req, res) => {
+app.post('/reservas', async (req, res) => {
   // Paso 1: leer y normalizar lo que mandó el formulario.
   const canchaTexto = req.body.cancha;
   const fecha = req.body.fecha;
@@ -274,7 +276,7 @@ app.post('/reservas', (req, res) => {
   }
 
   // Paso 3: verificar que el bloque siga libre.
-  const disponible = checkDisponible(cancha, fecha, hora);
+  const disponible = await checkDisponible(cancha, fecha, hora);
   if (!disponible) {
     const contenidoOcupado = `<div class="error">Ese bloque ya está ocupado para la cancha ${cancha} el ${fecha} a las ${hora}:00.</div><p><a href="/">Volver</a></p>`;
     return res.send(layout('Error', contenidoOcupado));
@@ -286,10 +288,11 @@ app.post('/reservas', (req, res) => {
   // Paso 5: contar cuántas reservas lleva este teléfono en el mes para
   // saber si aplica el descuento de cliente frecuente.
   const mesFecha = fecha.slice(0, 7);
-  const conteoMes = db.prepare(
+  const conteoMes = await db.get(
     `SELECT COUNT(*) AS total FROM reservas
-     WHERE telefono = ? AND substr(fecha, 1, 7) = ?`
-  ).get(telefono, mesFecha);
+     WHERE telefono = ? AND substr(fecha, 1, 7) = ?`,
+    telefono, mesFecha
+  );
 
   const totalConEstaReserva = conteoMes.total + 1;
   const aplicaDescuento = totalConEstaReserva >= 4;
@@ -298,7 +301,7 @@ app.post('/reservas', (req, res) => {
   }
 
   // Paso 6: guardar la reserva.
-  const id = crearReserva({ cancha, fecha, hora, cliente, telefono, precio });
+  const id = await crearReserva({ cancha, fecha, hora, cliente, telefono, precio });
 
   // Paso 7: armar la página de confirmación.
   const notaDescuento = aplicaDescuento ? ' (con 10% de descuento por cliente frecuente)' : '';
@@ -314,9 +317,9 @@ app.post('/reservas', (req, res) => {
 });
 
 // POST /reservas/:id/cancelar ------------------------------------------------
-app.post('/reservas/:id/cancelar', (req, res) => {
+app.post('/reservas/:id/cancelar', async (req, res) => {
   const id = Number(req.params.id);
-  const reserva = db.prepare('SELECT * FROM reservas WHERE id = ?').get(id);
+  const reserva = await db.get('SELECT * FROM reservas WHERE id = ?', id);
 
   if (!reserva) {
     return res.send(layout('Error', `<div class="error">No existe la reserva #${id}.</div>`));
@@ -328,7 +331,7 @@ app.post('/reservas/:id/cancelar', (req, res) => {
   // Regla de las 24 horas: la reserva tiene que ser para una fecha futura.
   const hoyFecha = hoyISO();
   if (reserva.fecha > hoyFecha) {
-    db.prepare(`UPDATE reservas SET estado = 'cancelada' WHERE id = ?`).run(id);
+    await db.run(`UPDATE reservas SET estado = 'cancelada' WHERE id = ?`, id);
     return res.send(layout('Cancelada', `<div class="ok">Reserva #${id} cancelada.</div><p><a href="/dia/${reserva.fecha}">Volver</a></p>`));
   } else {
     return res.send(layout('Error', `<div class="error">La reserva #${id} no se puede cancelar: falta menos de 24 horas para el bloque.</div><p><a href="/dia/${reserva.fecha}">Volver</a></p>`));
@@ -336,9 +339,9 @@ app.post('/reservas/:id/cancelar', (req, res) => {
 });
 
 // GET /dia/:fecha -------------------------------------------------------------
-app.get('/dia/:fecha', (req, res) => {
+app.get('/dia/:fecha', async (req, res) => {
   const fecha = req.params.fecha;
-  const reservas = getReservasDelDia(fecha);
+  const reservas = await getReservasDelDia(fecha);
 
   const filas = reservas.map(r => {
     const claseFila = r.estado === 'cancelada' ? 'cancelada' : '';
@@ -371,6 +374,12 @@ app.get('/api/cotizar', (req, res) => {
 });
 
 const PUERTO = 3000;
-app.listen(PUERTO, () => {
-  console.log(`Cancha Total F5 escuchando en el puerto ${PUERTO}`);
-});
+
+async function iniciar() {
+  await db.exec(ESQUEMA_RESERVAS);
+  app.listen(PUERTO, () => {
+    console.log(`Cancha Total F5 escuchando en el puerto ${PUERTO}`);
+  });
+}
+
+iniciar();

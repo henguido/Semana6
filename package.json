@@ -8,6 +8,7 @@
     "datos": "node datos.js"
   },
   "dependencies": {
+    "@tursodatabase/serverless": "^1.4.0",
     "better-sqlite3": "^11.3.0",
     "express": "^4.19.2"
   }

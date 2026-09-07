@@ -11,7 +11,7 @@ cadena de compilación (Visual Studio Build Tools) para construirlo desde códig
 Node 22 LTS la instalación funciona sin pasos adicionales.
 
 ```
-npm install
+npm ci
 ```
 
 ## Datos de prueba
@@ -53,7 +53,9 @@ máquina limpia (`ubuntu-latest`), con Node 22 y sin credenciales de servicios e
 las dependencias con `npm ci` (desde `package-lock.json`) y la puerta que decide si el estado es
 aceptable es la misma heredada del Caso 5: `bash verificar.sh`. No se usa `npm test` ni
 `node --test` directamente como puerta, porque `verificar.sh` es quien distingue los cuatro
-hallazgos abiertos ya documentados en `HALLAZGOS.md` de una regresión real.
+hallazgos abiertos ya documentados en `HALLAZGOS.md` de una regresión real. La CI usa siempre
+SQLite local (igual que en tu máquina): no requiere ni acepta credenciales de Turso ni de ningún
+otro servicio externo.
 
 - Los cuatro hallazgos abiertos (`HALLAZGO-02`, `HALLAZGO-03`, `HALLAZGO-04`) pueden seguir
   fallando en la suite sin que eso convierta la puerta en roja: `verificar.sh` sale con código
@@ -64,3 +66,32 @@ hallazgos abiertos ya documentados en `HALLAZGOS.md` de una regresión real.
   Únicamente ese check, configurado como *required status check* en la protección de la rama,
   bloquea el merge. Cualquier otro check o estado que no esté marcado como requerido es solo
   informativo y no impide fusionar.
+
+## Producción
+
+Producción usa una base de datos gestionada en **Turso** en lugar de SQLite local (el primer
+despliegue mostró que un archivo `reservas.db` en el filesystem de Vercel no es una opción
+viable). El backend se elige automáticamente en `db.js` según el entorno: si están definidas las
+variables
+
+```
+TURSO_DATABASE_URL
+TURSO_AUTH_TOKEN
+```
+
+la aplicación usa Turso; si no están definidas, usa SQLite local (mismo comportamiento de
+siempre). Esas dos variables se configuran directamente en la plataforma de despliegue (Vercel) y
+sus valores **nunca** se guardan en este repositorio, ni en el código, ni en el historial de Git.
+
+Si la aplicación arranca en Vercel y esas variables no están definidas, **falla explícitamente**
+en vez de escribir silenciosamente en el filesystem local (que en Vercel es efímero y de solo
+lectura para el paquete desplegado).
+
+## Prueba contra almacenamiento gestionado
+
+`tests/preparar-turso-test.js` permite ejecutar la misma suite del Caso 5 contra una base Turso
+real, para demostrar que el comportamiento no depende del motor de persistencia. Solo opera sobre
+una base identificada inequívocamente como `cancha-total-test`: si la URL configurada no
+contiene ese nombre, o si contiene el nombre de la base de producción, el script aborta sin
+ejecutar ningún SQL. No se invoca desde `verificar.sh` ni desde CI — es una herramienta manual,
+pensada para correrse puntualmente con las credenciales de la base de prueba.
