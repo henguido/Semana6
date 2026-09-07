@@ -25,3 +25,11 @@ real (no manifestada), mientras los cuatro hallazgos abiertos (`HALLAZGO-02`, `H
 Se restauró `hora >= 17` en `precioDelBloque`, dejando `server.js` exactamente como estaba
 antes de esta rama. `verificar.sh` vuelve a salir con código `0`: 22 pruebas evaluadas, 18
 pasan, 4 fallan únicamente por los hallazgos abiertos conocidos, 0 regresiones reales.
+
+## Resultado observado
+
+- El primer commit de esta rama produjo la corrida roja: el check `verificar` del PR quedó en
+  `failure`, con `RN-11` reportada como regresión real no manifestada, y la protección de
+  `main` bloqueó la fusión (`mergeStateStatus: BLOCKED`) mientras ese check no estaba en verde.
+- Este segundo commit repara exactamente esa regresión. El check `verificar` vuelve a `success`
+  y la puerta vuelve a aceptar únicamente los cuatro hallazgos abiertos conocidos.

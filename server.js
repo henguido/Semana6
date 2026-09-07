@@ -52,7 +52,7 @@ function formatColones(monto) {
 // Precio base de un bloque según la hora (mismo cálculo usado en la
 // disponibilidad, la creación de una reserva y la cotización rápida).
 function precioDelBloque(hora) {
-  if (hora >= 18) {
+  if (hora >= 17) {
     return 20000;
   } else {
     return 15000;
