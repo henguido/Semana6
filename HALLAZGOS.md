@@ -9,8 +9,8 @@ regla de la administradora; el vínculo prueba↔hallazgo vive fuera de la suite
 `tests/fallos-esperados.json`, que es lo que lee `verificar.sh` para no tratar los fallos
 todavía abiertos como regresión. Cuando se corrige un hallazgo, su prueba pasa a verde sin
 tocarse: solo se quita la entrada correspondiente de `tests/fallos-esperados.json` y se actualiza
-el estado aquí a "cerrado" con su evidencia. HALLAZGO-01 ya se corrigió así; HALLAZGO-02,
-HALLAZGO-03 y HALLAZGO-04 siguen abiertos.
+el estado aquí a "cerrado" con su evidencia. HALLAZGO-01, HALLAZGO-02, HALLAZGO-03 y
+HALLAZGO-04 ya se corrigieron así.
 
 ---
 
@@ -54,8 +54,19 @@ HALLAZGO-03 y HALLAZGO-04 siguen abiertos.
 - **Comportamiento observado:** la validación de `POST /reservas` (líneas 240-263 de
   `server.js`) no incluye ninguna regla sobre `telefono`: una reserva se crea igual sin
   teléfono o con un teléfono de cualquier longitud.
-- **Estado:** abierto
-- **Evidencia de cierre:** —
+- **Estado:** **cerrado**
+- **Evidencia de cierre:**
+  - Regla corregida: `POST /reservas` ahora exige `telefono` no vacío y con formato
+    `^\d{8}$` (exactamente 8 dígitos), agregado a la validación existente en `server.js`.
+  - Pruebas: `RN-06` y `RN-07` en `tests/especificacion.test.js` pasaron de `not ok` a
+    `ok` sin que se modificara ni una sola línea de ese archivo (Caso práctico 7, PR #4).
+  - El entorno local no pudo ejecutar la suite (`better-sqlite3` compilado para otra
+    versión de Node en esta máquina, sin Visual Studio Build Tools para recompilar); la
+    validación real se hizo vía CI en GitHub Actions (Node 22, `bash verificar.sh`) sobre
+    el commit `8035dce`: `verificar.sh` reportó "Regresiones reales (no manifestadas): 0"
+    y marcó `RN-06`/`RN-07` como "posible hallazgo cerrado sin actualizar el manifest" —
+    exactamente la evidencia de que el comportamiento ya estaba corregido.
+  - `tests/fallos-esperados.json`: se retiraron las entradas de `RN-06` y `RN-07`.
 
 ## HALLAZGO-03 — Las reservas canceladas cuentan para determinar cliente frecuente
 
@@ -68,8 +79,18 @@ HALLAZGO-03 y HALLAZGO-04 siguen abiertos.
   cuenta todas las reservas del teléfono en el mes, sin filtrar por `estado`. Tres reservas
   canceladas + una nueva activa ya activan el 10% de descuento, cuando según la administradora
   la nueva reserva sería apenas la primera activa del mes.
-- **Estado:** abierto
-- **Evidencia de cierre:** —
+- **Estado:** **cerrado**
+- **Evidencia de cierre:**
+  - Regla corregida: la consulta de conteo mensual en `POST /reservas` ahora agrega
+    `AND estado = 'activa'`, de forma que las reservas canceladas ya no cuentan para
+    determinar cliente frecuente.
+  - Prueba: `RN-13` en `tests/especificacion.test.js` pasó de `not ok` a `ok` sin que se
+    modificara ni una sola línea de ese archivo (Caso práctico 7, PR #4).
+  - Igual que en HALLAZGO-02, la validación real se hizo vía CI en GitHub Actions (Node 22)
+    sobre el commit `8035dce`, por la misma limitación del entorno local: `verificar.sh`
+    marcó `RN-13` como "posible hallazgo cerrado sin actualizar el manifest", con
+    0 regresiones reales.
+  - `tests/fallos-esperados.json`: se retiró la entrada de `RN-13`.
 
 ## HALLAZGO-04 — La ventana de cancelación de 24 horas se mide por fecha calendario, no por hora exacta
 
@@ -83,19 +104,29 @@ HALLAZGO-03 y HALLAZGO-04 siguen abiertos.
   reserva de "mañana" siempre se puede cancelar hoy, aunque en la práctica falten menos de 24
   horas reales para el bloque (p. ej. reservar mañana a las 8:00 y cancelar hoy a las 20:00, con
   solo 12 horas de por medio).
-- **Estado:** abierto
-- **Evidencia de cierre:** —
-- **Nota sobre la prueba (`RN-16`):** calcula en tiempo de ejecución, con aritmética de fechas
-  completa (año/mes/día/hora, sin asumir qué fecha es "hoy" ni si la corrida cruza la
-  medianoche), cuántas horas reales faltan hasta el primer bloque de mañana (08:00), y deriva de
-  ahí el valor esperado según la regla de la administradora. Es matemáticamente imposible construir
-  un bloque "de mañana" con menos de 24h reales de anticipación cuando la suite corre entre las
-  00:00 y las 08:00 de hoy (el bloque más temprano de mañana, 08:00, ya queda a 24h o más en esa
-  franja): en esa ventana el código y la especificación coinciden por construcción del calendario,
-  no porque el hallazgo se haya corregido. Esa ventana está declarada explícitamente en
-  `tests/fallos-esperados.json` (`exentoSiHoraLocalMenorQue: 8`) para que `verificar.sh` no la
-  confunda con un cierre real. Fuera de esa ventana (~16 de las 24 horas del día), la prueba falla
-  como se espera y evidencia el hallazgo.
+- **Estado:** **cerrado**
+- **Evidencia de cierre:**
+  - Regla corregida: `POST /reservas/:id/cancelar` ya no compara `reserva.fecha > hoyFecha`;
+    ahora calcula el instante exacto del bloque (`año/mes/día/hora` de la reserva) y exige que
+    falten 24 horas reales o más respecto al momento de la cancelación.
+  - Prueba: `RN-16` en `tests/especificacion.test.js` pasó de `not ok` a `ok` sin que se
+    modificara ni una sola línea de ese archivo (Caso práctico 7, PR #4).
+  - Igual que en HALLAZGO-02 y HALLAZGO-03, la validación real se hizo vía CI en GitHub
+    Actions (Node 22) sobre el commit `8035dce`, por la misma limitación del entorno local:
+    `verificar.sh` marcó `RN-16` como "posible hallazgo cerrado sin actualizar el manifest",
+    con 0 regresiones reales.
+  - `tests/fallos-esperados.json`: se retiró la entrada de `RN-16` (incluida su
+    `exentoSiHoraLocalMenorQue`, que ya no aplica: la prueba ahora refleja el comportamiento
+    correcto en cualquier hora del día, no solo dentro de la ventana 00:00-08:00).
+- **Nota histórica sobre la prueba (`RN-16`), previa al cierre:** mientras el hallazgo estuvo
+  abierto, la prueba calculaba en tiempo de ejecución, con aritmética de fechas completa
+  (año/mes/día/hora, sin asumir qué fecha es "hoy" ni si la corrida cruza la medianoche),
+  cuántas horas reales faltaban hasta el primer bloque de mañana (08:00), y derivaba de ahí el
+  valor esperado. Entre las 00:00 y las 08:00 de un día dado, el bloque más temprano de mañana
+  (08:00) ya quedaba a 24h o más, así que en esa franja el código y la especificación coincidían
+  por construcción del calendario, no porque el hallazgo se hubiera corregido — de ahí la
+  exención declarada en el manifest mientras estuvo abierto. Con el hallazgo cerrado, esa
+  distinción ya no es necesaria: la prueba pasa en cualquier franja horaria.
 
 ---
 
